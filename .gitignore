@@ -2,5 +2,4 @@
 .idea
 __pycache__
 src/cetstash/cache/*
-src/cetstash/config/config.py
 src/cetstash/config/config*.py
