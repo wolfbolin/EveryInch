@@ -1,0 +1,15 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+requests = "==2.20.0"
+lxml = "==4.2.5"
+pymongo = "==3.7.2"
+"beautifulsoup4" = "==4.6.3"
+
+[dev-packages]
+
+[requires]
+python_version = "3.7"
