@@ -1,6 +1,8 @@
 # EveryInch
 
-![https://github.com/wolfbolin/EveryInch](https://img.shields.io/badge/build-passing-brightgreen.svg)![https://github.com/wolfbolin/EveryInch](https://img.shields.io/badge/license-GPL-orange.svg)![https://github.com/wolfbolin/EveryInch](https://img.shields.io/badge/status-stable-green.svg)
+![https://github.com/wolfbolin/EveryInch](https://img.shields.io/badge/build-passing-brightgreen.svg)
+![https://github.com/wolfbolin/EveryInch](https://img.shields.io/badge/license-GPL-orange.svg)
+![https://github.com/wolfbolin/EveryInch](https://img.shields.io/badge/status-stable-green.svg)
 
 ## 模块说明
 
