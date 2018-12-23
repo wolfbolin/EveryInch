@@ -51,7 +51,10 @@ def download(student_data):
         },
         upsert=True
     )
-    return result.modified_count
+    if result.upserted_id:
+        return 1
+    else:
+        return result.modified_count
 
 
 def download_cet(code, name, level):

@@ -1,5 +1,5 @@
 # Set for WolfBolin
 .idea
 __pycache__
-src/cetstash/cache/*
-src/cetstash/config/config*.py
+cache/*
+config*.py
