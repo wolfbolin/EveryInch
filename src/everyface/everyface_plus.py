@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 # Common package
+import io
 import os
+import json
 import base64
-from aip import AipFace
+import requests
+from PIL import Image, ImageFile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 # Personal package
 import dao
@@ -19,25 +22,46 @@ def detect_face(mission_data):
     """
     # 开始读取图像文件
     with open(mission_data['image'], 'rb') as fp:
-        image = fp.read()
-        image = str(base64.b64encode(image), 'utf8')  # 图像需要经过base64编码
+        # 图像需要经过jpeg图像格式校正和base64编码
+        image_obj = Image.open(fp)
+        image = io.BytesIO()
+        image_obj.save(image, 'jpeg')
+        image = str(base64.b64encode(image.getvalue()), 'utf8')
+
+        # 构建请求信息
+        http_url = config.FACE_PLUS['url']
+        http_data = {
+            'api_key': config.FACE_PLUS['api_key'],
+            'api_secret': config.FACE_PLUS['api_secret'],
+            'image_base64': image,
+            'return_attributes': mission_data['return_attributes']
+        }
 
         # 开始反复尝试识别该图像
-        result = {'error_code': 18}
-        while result['error_code'] != 0:
+        result = result_json = None
+        result_code = 100
+        while result_code != 200:
             try:
-                result = mission_data['aip'].detect(image=image,
-                                                    image_type=mission_data['image_type'],
-                                                    options=mission_data['options'])
+                result = requests.post(url=http_url, data=http_data)
             except Exception:
                 continue
+            result_code = result.status_code
+            result_text = result.text
+            result_json = json.loads(result_text)
+            # if result_code == 403 and result_json['error_message'] == 'CONCURRENCY_LIMIT_EXCEEDED':
+            #     util.print_e('并发数超过限制， API Key 的 QPS 已经达到上限')
+            # if result_code == 403 and result_json['error_message'] == 'IMAGE_ERROR_UNSUPPORTED_FORMAT: image_base64':
+            #     util.print_e('{}:对应的图像无法正确解析，有可能是数据破损'.format(mission_data['code']))
+
+        # 为适应高频的数据抓取，手动关闭http连接
+        result.close()
 
         # 提取个人面貌信息数据
         face_info = {
-            'age': result['result']['face_list'][0]['age'],  # 年龄
-            'beauty': result['result']['face_list'][0]['beauty'],  # 颜值
-            'gender': result['result']['face_list'][0]['gender']['type'],  # 性别
-            'gender_probability': result['result']['face_list'][0]['gender']['probability']  # 性别置信度
+            'age': result_json['faces'][0]['attributes']['age']['value'],  # 年龄
+            'beauty': result_json['faces'][0]['attributes']['beauty'],  # 颜值（包含男性视角和女性视角）
+            'gender': result_json['faces'][0]['attributes']['gender']['value'],  # 性别
+            'skinstatus': result_json['faces'][0]['attributes']['skinstatus']
         }
 
         # 将获取到的数据写入数据库中
@@ -49,7 +73,7 @@ def detect_face(mission_data):
             {
                 '$set': {
                     'code': mission_data['code'],
-                    'aip_face': face_info
+                    'face_plus': face_info
                 }
             },
             upsert=True
@@ -69,31 +93,27 @@ if __name__ == '__main__':
     file_list = os.listdir(config.ALBUM)
     util.print_t('相册中包含{}张照片'.format(len(file_list)))
 
-    # 批量创建AIP连接对象
-    util.print_a('正在批量创建AIP连接对象')
-    aip_list = []
-    for aip_key in config.AIPFace:
-        aip_list.append(AipFace(**aip_key))
-    if len(aip_list) == 0:
-        util.print_w('没有AIP帐号怎么识别鸭')
-        exit()
-
     util.print_a('正在进行识别前的初始化')
+
     # 建立线程池，当连接对象过多时需要改写为线程池！！
     all_work = []  # 线程管理数组
-    executor = ThreadPoolExecutor(max_workers=len(aip_list))
+    executor = ThreadPoolExecutor(max_workers=config.MAX_WORKERS)
 
     # 建立MongoDB数据库连接
     mongo_conn = dao.mongo_conn()
     mongo_set = mongo_conn[config.MONGO_SET]
     exclude_list = []  # 检索需要排除的任务编号
-    for face in mongo_set.find({}, {'_id': False, 'face_plus': False}):
-        if 'aip_face' in face and len(face['aip_face'].keys()) != 0:
+    for face in mongo_set.find({}, {'_id': False, 'aip_face': False}):
+        if 'face_plus' in face and len(face['face_plus'].keys()) != 0:
             exclude_list.append(face['code'])
 
-    # 遍历相册，向AIP对象分配任务
-    util.print_a('正在向AIP对象分配任务')
-    it = 0  # AIP对象任务分配指针，指向下一个可用的AIP对象
+    # HTTP连接请求预设
+    # requests.adapters.DEFAULT_RETRIES = config.MAX_WORKERS
+    # 图像处理配置预设
+    ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+    # 遍历相册，向线程池分配任务
+    util.print_a('正在向线程池分配任务，需要完成{}项任务'.format(len(file_list) - len(exclude_list)))
     for index, file in enumerate(file_list):
         if file.replace('.jpg', '') in exclude_list:
             # 跳过已经执行过的图像
@@ -105,15 +125,9 @@ if __name__ == '__main__':
                 'code': file.replace('.jpg', ''),
                 'image': file_path,
                 'image_type': 'BASE64',
-                'options': {
-                    'max_face_num': 1,
-                    'face_field': "age,beauty,gender",
-                },
-                'aip': aip_list[it],
+                'return_attributes': "age,beauty,gender,skinstatus",
                 'mongo': mongo_conn
             }
-            it += 1
-            it %= len(aip_list)
             # 向线程池提交任务
             work = executor.submit(detect_face, data)
             all_work.append(work)

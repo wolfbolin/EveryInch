@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 
+# 配置多线程的相关信息
+MAX_WORKERS = 10
+
 # MongoDB相关的数据库配置
 MONGO = {
     'host': 'example.com',

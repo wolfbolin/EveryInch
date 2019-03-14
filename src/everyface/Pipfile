@@ -4,8 +4,10 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-baidu-aip = "*"
+baidu-aip = "==2.2.10.0"
 pymongo = "==3.7.2"
+requests = "==2.21.0"
+pillow = "==5.3.0"
 
 [dev-packages]
 
